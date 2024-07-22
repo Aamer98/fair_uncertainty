@@ -201,6 +201,7 @@ def generate_metadata(data_path, datasets=['celeba', 'waterbirds', 'civilcomment
         'mimic_notes': generate_metadata_mimic_notes,
         'cxr_multisite': generate_metadata_cxr_multisite,
         'chexpert': generate_metadata_chexpert,
+        'chexpert_unitTest': generate_metadata_chexpert_unitTest,
         'breeds': generate_metadata_breeds,
         'cmnist': generate_metadata_cmnist
     }
@@ -437,7 +438,7 @@ def generate_metadata_nicopp(data_path):
 
 def generate_metadata_mimic_cxr(data_path, test_pct=0.1, val_pct=0.05):
     logging.info("Generating metadata for MIMIC-CXR No Finding Prediction...")
-    img_dir = Path(os.path.join(data_path, "MIMIC-CXR-JPG"))
+    img_dir = Path(os.path.join(data_path, "MIMIC-CXR-JPG/physionet.org/files/mimic-cxr-jpg/2.0.0"))
 
     assert (img_dir/'mimic-cxr-2.0.0-metadata.csv.gz').is_file()
     assert (img_dir/'patients.csv.gz').is_file(), \
@@ -508,7 +509,7 @@ def generate_metadata_mimic_notes(data_path):
 
 def generate_metadata_cxr_multisite(data_path, test_pct=0.1, val_pct=0.05):
     logging.info("Generating metadata for MIMIC-CXR and CheXpert pnuemonia prediction...")
-    mimic_dir = Path(os.path.join(data_path, "MIMIC-CXR-JPG"))
+    mimic_dir = Path(os.path.join(data_path, "MIMIC-CXR-JPG/physionet.org/files/mimic-cxr-jpg/2.0.0"))
     chexpert_dir = Path(os.path.join(data_path, "chexpert"))
 
     assert (mimic_dir/'mimic-cxr-2.0.0-metadata.csv.gz').is_file()
@@ -584,6 +585,48 @@ def generate_metadata_cxr_multisite(data_path, test_pct=0.1, val_pct=0.05):
     df = pd.concat((df_final, df_eval), ignore_index=True)
     (mimic_dir/'subpop_bench_meta').mkdir(exist_ok=True)
     df.to_csv(os.path.join(mimic_dir, 'subpop_bench_meta', "metadata_multisite.csv"), index=False)
+
+
+def generate_metadata_chexpert_unitTest(data_path, test_pct=0.15, val_pct=0.1):
+    logging.info("Generating metadata for CheXpert No Finding prediction...")
+    chexpert_dir = Path(os.path.join(data_path, "chexpert_unitTest"))
+    assert (chexpert_dir/'train.csv').is_file()
+    assert (chexpert_dir/'CHEXPERT DEMO.xlsx').is_file()
+
+    df = pd.concat([pd.read_csv(chexpert_dir/'train.csv'), pd.read_csv(chexpert_dir/'valid.csv')], ignore_index=True)
+
+    df['filename'] = df['Path'].astype(str).apply(lambda x: os.path.join(chexpert_dir, x[x.index('/')+1:]))
+    df['subject_id'] = df['Path'].apply(lambda x: int(Path(x).parent.parent.name[7:])).astype(str)
+    df = df[df.Sex.isin(['Male', 'Female'])]
+    details = pd.read_excel(chexpert_dir/'CHEXPERT DEMO.xlsx', engine='openpyxl')[['PATIENT', 'PRIMARY_RACE']]
+    details['subject_id'] = details['PATIENT'].apply(lambda x: x[7:]).astype(int).astype(str)
+
+    df = pd.merge(df, details, on='subject_id', how='inner').reset_index(drop=True)
+
+    def cat_race(r):
+        if isinstance(r, str):
+            if r.startswith('White'):
+                return 0
+            elif r.startswith('Black'):
+                return 1
+        return 2
+
+    df['ethnicity'] = df['PRIMARY_RACE'].apply(cat_race)
+    attr_mapping = {'Male_0': 0, 'Female_0': 1, 'Male_1': 2, 'Female_1': 3, 'Male_2': 4, 'Female_2': 5}
+    df['a'] = (df['Sex'] + '_' + df['ethnicity'].astype(str)).map(attr_mapping)
+    df['y'] = df['No Finding'].fillna(0.0).astype(int)
+
+    train_val_idx, test_idx = train_test_split(df.index, test_size=test_pct, random_state=42, stratify=df['a'])
+    train_idx, val_idx = train_test_split(
+        train_val_idx, test_size=val_pct/(1-test_pct), random_state=42, stratify=df.loc[train_val_idx, 'a'])
+
+    df['split'] = 0
+    df.loc[val_idx, 'split'] = 1
+    df.loc[test_idx, 'split'] = 2
+
+    (chexpert_dir/'subpop_bench_meta').mkdir(exist_ok=True)
+    df.to_csv(os.path.join(chexpert_dir, 'subpop_bench_meta', "metadata_no_finding.csv"), index=False)
+
 
 
 def generate_metadata_chexpert(data_path, test_pct=0.15, val_pct=0.1):
@@ -690,7 +733,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Download dataset')
     parser.add_argument('datasets', nargs='+', type=str, default=[
         'celeba', 'waterbirds', 'civilcomments', 'multinli', 'imagenetbg', 'metashift', 'nico++',
-        'mimic_cxr', 'chexpert', 'mimic_notes', 'cxr_multisite', 'breeds', 'cmnist'])
+        'mimic_cxr', 'chexpert', 'chexpert_unitTest', 'mimic_notes', 'cxr_multisite', 'breeds', 'cmnist'])
     parser.add_argument('--data_path', type=str)
     parser.add_argument('--download', action='store_true', default=False)
     args = parser.parse_args()
