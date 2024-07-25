@@ -35,7 +35,7 @@ def eval_metrics(algorithm, loader, device, thres=0.5):
     # preds: sigmoid output
     targets, attributes, preds, gs = predict_on_set(algorithm, loader, device)
     preds_rounded = preds >= thres if preds.squeeze().ndim == 1 else preds.argmax(1)
-    label_set = np.unique(targets) # set of labels
+    label_set = np.unique(targets) # set of labels: but why?
 
     res = {}
     res['overall'] = {
@@ -56,21 +56,25 @@ def eval_metrics(algorithm, loader, device, thres=0.5):
     classes_report = classification_report(targets, preds_rounded, output_dict=True, zero_division=0.)
     res['overall']['macro_avg'] = classes_report['macro avg']
     res['overall']['weighted_avg'] = classes_report['weighted avg']
+    breakpoint()
     for y in np.unique(targets):
         res['per_class'][int(y)] = classes_report[str(y)]
 
+    breakpoint()
     for g in np.unique(gs):
         mask = gs == g
         res['per_group'][g] = {
             **binary_metrics(targets[mask], preds_rounded[mask], label_set)
         }
 
+    breakpoint()
     res['adjusted_accuracy'] = sum([res['per_group'][g]['accuracy'] for g in np.unique(gs)]) / len(np.unique(gs))
     res['min_attr'] = pd.DataFrame(res['per_attribute']).min(axis=1).to_dict()
     res['max_attr'] = pd.DataFrame(res['per_attribute']).max(axis=1).to_dict()
     res['min_group'] = pd.DataFrame(res['per_group']).min(axis=1).to_dict()
     res['max_group'] = pd.DataFrame(res['per_group']).max(axis=1).to_dict()
 
+    breakpoint()
     return res
 
 
