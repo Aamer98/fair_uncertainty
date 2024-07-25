@@ -31,9 +31,11 @@ def predict_on_set(algorithm, loader, device):
 
 
 def eval_metrics(algorithm, loader, device, thres=0.5):
+    breakpoint()
+    # preds: sigmoid output
     targets, attributes, preds, gs = predict_on_set(algorithm, loader, device)
     preds_rounded = preds >= thres if preds.squeeze().ndim == 1 else preds.argmax(1)
-    label_set = np.unique(targets)
+    label_set = np.unique(targets) # set of labels
 
     res = {}
     res['overall'] = {
