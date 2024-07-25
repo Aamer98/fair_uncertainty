@@ -328,7 +328,7 @@ if __name__ == "__main__":
         num_workers=num_workers)
         for dset in [vars(datasets)[args.dataset](args.data_dir, split, hparams) for split in split_names]
     ]
-    final_results = {split: eval_helper.eval_metrics(algorithm, loader, device)
+    final_results = {split: eval_helper.test_metrics(algorithm, loader, device)
                      for split, loader in zip(split_names, final_eval_loaders)}
     pickle.dump(final_results, open(os.path.join(args.output_dir, 'final_results.pkl'), 'wb'))
 

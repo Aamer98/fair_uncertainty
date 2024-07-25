@@ -32,11 +32,10 @@ def predict_on_set(algorithm, loader, device):
     return np.concatenate(ys, axis=0), np.concatenate(atts, axis=0), np.concatenate(ps, axis=0), np.concatenate(gs)
 
 
-def tta_uncertainty(algorithm, loader, device):
-    
+def TTA_eval(algorithm, loader, device):
     num_labels = loader.dataset.num_labels
 
-    ys, atts, gs, ps = [], [], [], []
+    ps = []
 
     algorithm.eval()
     transforms = tta.Compose(
@@ -48,33 +47,7 @@ def tta_uncertainty(algorithm, loader, device):
         ]
     )
 
-    breakpoint()
-    # move to evaluation loop
-    for transformer in transforms: # custom transforms or e.g. tta.aliases.d4_transform() 
-        
-        # augment image
-        augmented_image = transformer.augment_image(image)
-        
-        # pass to model
-        model_output = model(augmented_image, another_input_data)
-        
-        # reverse augmentation for mask and label
-        deaug_mask = transformer.deaugment_mask(model_output['mask'])
-        deaug_label = transformer.deaugment_label(model_output['label'])
-        
-        # save results
-        labels.append(deaug_mask)
-        masks.append(deaug_label)
-        
-    # reduce results as you want, e.g mean/max/min
-    label = mean(labels)
-    mask = mean(masks)
-
-    breakpoint()
-
-    ####
-
-    algorithm_tta.eval()
+    algorithm.eval()
     with torch.no_grad():
         for _, x, y, a in loader:
             p = algorithm.predict(x.to(device))
@@ -86,17 +59,37 @@ def tta_uncertainty(algorithm, loader, device):
                     p = p[:, 1]
 
             ps.append(p)
-            ys.append(y)
-            atts.append(a)
-            gs.append([f'y={yi},a={gi}' for c, (yi, gi) in enumerate(zip(y, a))])
 
-    return np.concatenate(ys, axis=0), np.concatenate(atts, axis=0), np.concatenate(ps, axis=0), np.concatenate(gs)
+            # TTA eval
+            tta_ps = []
+            tta_ps.append(p)
+
+            # apply augmentations to x
+            for transformer in transforms: # custom transforms or e.g. tta.aliases.d4_transform() 
+                # augment image
+                augmented_x = transformer.augment_image(x)
+                
+                # pass to model
+                p = algorithm.predict(augmented_x.to(device)) 
+                
+                if p.squeeze().ndim == 1:
+                    p = torch.sigmoid(p).detach().cpu().numpy()
+                else:
+                    p = torch.softmax(p, dim=-1).detach().cpu().numpy()
+                    if num_labels == 2:
+                        p = p[:, 1]
+
+                tta_ps.append(p)
+
+            ps.append(tta_ps)
+
+    breakpoint()
+    return np.concatenate(ps, axis=0)
 
 
-def eval_metrics(algorithm, loader, device, thres=0.5):
-
+def test_metrics(algorithm, loader, device, thres=0.5):
     # tta uncertainty
-    targets, attributes, preds, gs = tta_uncertainty(algorithm, loader, device)
+    preds = TTA_eval(algorithm, loader, device)
 
     # preds: sigmoid output
     targets, attributes, preds, gs = predict_on_set(algorithm, loader, device) # gs: group sensitive attribute: (target, attribute) pairing?
@@ -122,25 +115,66 @@ def eval_metrics(algorithm, loader, device, thres=0.5):
     classes_report = classification_report(targets, preds_rounded, output_dict=True, zero_division=0.)
     res['overall']['macro_avg'] = classes_report['macro avg']
     res['overall']['weighted_avg'] = classes_report['weighted avg']
-    breakpoint()
+    
     for y in np.unique(targets):
         res['per_class'][int(y)] = classes_report[str(y)]
 
-    breakpoint()
     for g in np.unique(gs):
         mask = gs == g
         res['per_group'][g] = {
             **binary_metrics(targets[mask], preds_rounded[mask], label_set)
         }
 
-    breakpoint()
     res['adjusted_accuracy'] = sum([res['per_group'][g]['accuracy'] for g in np.unique(gs)]) / len(np.unique(gs))
     res['min_attr'] = pd.DataFrame(res['per_attribute']).min(axis=1).to_dict()
     res['max_attr'] = pd.DataFrame(res['per_attribute']).max(axis=1).to_dict()
     res['min_group'] = pd.DataFrame(res['per_group']).min(axis=1).to_dict()
     res['max_group'] = pd.DataFrame(res['per_group']).max(axis=1).to_dict()
 
-    breakpoint()
+    return res
+
+def eval_metrics(algorithm, loader, device, thres=0.5):
+
+    # preds: sigmoid output
+    targets, attributes, preds, gs = predict_on_set(algorithm, loader, device) # gs: group sensitive attribute: (target, attribute) pairing?
+    preds_rounded = preds >= thres if preds.squeeze().ndim == 1 else preds.argmax(1)
+    label_set = np.unique(targets) # set of labels: but why?
+
+    res = {}
+    res['overall'] = {
+        **binary_metrics(targets, preds_rounded, label_set),
+        **prob_metrics(targets, preds, label_set)
+    }
+    res['per_attribute'] = {}
+    res['per_class'] = {}
+    res['per_group'] = {}
+
+    for a in np.unique(attributes):
+        mask = attributes == a
+        res['per_attribute'][int(a)] = {
+            **binary_metrics(targets[mask], preds_rounded[mask], label_set),
+            **prob_metrics(targets[mask], preds[mask], label_set)
+        }
+
+    classes_report = classification_report(targets, preds_rounded, output_dict=True, zero_division=0.)
+    res['overall']['macro_avg'] = classes_report['macro avg']
+    res['overall']['weighted_avg'] = classes_report['weighted avg']
+
+    for y in np.unique(targets):
+        res['per_class'][int(y)] = classes_report[str(y)]
+
+    for g in np.unique(gs):
+        mask = gs == g
+        res['per_group'][g] = {
+            **binary_metrics(targets[mask], preds_rounded[mask], label_set)
+        }
+
+    res['adjusted_accuracy'] = sum([res['per_group'][g]['accuracy'] for g in np.unique(gs)]) / len(np.unique(gs))
+    res['min_attr'] = pd.DataFrame(res['per_attribute']).min(axis=1).to_dict()
+    res['max_attr'] = pd.DataFrame(res['per_attribute']).max(axis=1).to_dict()
+    res['min_group'] = pd.DataFrame(res['per_group']).min(axis=1).to_dict()
+    res['max_group'] = pd.DataFrame(res['per_group']).max(axis=1).to_dict()
+
     return res
 
 
