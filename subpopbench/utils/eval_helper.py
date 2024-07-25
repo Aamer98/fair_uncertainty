@@ -5,6 +5,8 @@ from sklearn.metrics import (accuracy_score, confusion_matrix, roc_auc_score, av
                              balanced_accuracy_score, recall_score, brier_score_loss, log_loss, classification_report)
 import netcal.metrics
 
+import ttach as tta # test time augmentation package
+
 
 def predict_on_set(algorithm, loader, device):
     num_labels = loader.dataset.num_labels
@@ -30,8 +32,72 @@ def predict_on_set(algorithm, loader, device):
     return np.concatenate(ys, axis=0), np.concatenate(atts, axis=0), np.concatenate(ps, axis=0), np.concatenate(gs)
 
 
-def eval_metrics(algorithm, loader, device, thres=0.5):
+def tta_uncertainty(algorithm, loader, device):
+    
+    num_labels = loader.dataset.num_labels
+
+    ys, atts, gs, ps = [], [], [], []
+
+    algorithm.eval()
+    transforms = tta.Compose(
+        [
+            tta.HorizontalFlip(),
+            tta.Rotate90(angles=[0, 180]),
+            tta.Scale(scales=[1, 2, 4]),
+            tta.Multiply(factors=[0.9, 1, 1.1]),        
+        ]
+    )
+
     breakpoint()
+    # move to evaluation loop
+    for transformer in transforms: # custom transforms or e.g. tta.aliases.d4_transform() 
+        
+        # augment image
+        augmented_image = transformer.augment_image(image)
+        
+        # pass to model
+        model_output = model(augmented_image, another_input_data)
+        
+        # reverse augmentation for mask and label
+        deaug_mask = transformer.deaugment_mask(model_output['mask'])
+        deaug_label = transformer.deaugment_label(model_output['label'])
+        
+        # save results
+        labels.append(deaug_mask)
+        masks.append(deaug_label)
+        
+    # reduce results as you want, e.g mean/max/min
+    label = mean(labels)
+    mask = mean(masks)
+
+    breakpoint()
+
+    ####
+
+    algorithm_tta.eval()
+    with torch.no_grad():
+        for _, x, y, a in loader:
+            p = algorithm.predict(x.to(device))
+            if p.squeeze().ndim == 1:
+                p = torch.sigmoid(p).detach().cpu().numpy()
+            else:
+                p = torch.softmax(p, dim=-1).detach().cpu().numpy()
+                if num_labels == 2:
+                    p = p[:, 1]
+
+            ps.append(p)
+            ys.append(y)
+            atts.append(a)
+            gs.append([f'y={yi},a={gi}' for c, (yi, gi) in enumerate(zip(y, a))])
+
+    return np.concatenate(ys, axis=0), np.concatenate(atts, axis=0), np.concatenate(ps, axis=0), np.concatenate(gs)
+
+
+def eval_metrics(algorithm, loader, device, thres=0.5):
+
+    # tta uncertainty
+    targets, attributes, preds, gs = tta_uncertainty(algorithm, loader, device)
+
     # preds: sigmoid output
     targets, attributes, preds, gs = predict_on_set(algorithm, loader, device) # gs: group sensitive attribute: (target, attribute) pairing?
     preds_rounded = preds >= thres if preds.squeeze().ndim == 1 else preds.argmax(1)
