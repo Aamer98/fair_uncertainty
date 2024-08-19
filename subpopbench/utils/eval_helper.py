@@ -33,6 +33,9 @@ def predict_on_set(algorithm, loader, device):
 
 
 def TTA_eval(algorithm, loader, device):
+    
+    print('Running test-time augmentation')
+
     num_labels = loader.dataset.num_labels
 
     ps = []
@@ -68,10 +71,10 @@ def TTA_eval(algorithm, loader, device):
             for transformer in transforms: # custom transforms or e.g. tta.aliases.d4_transform() 
                 # augment image
                 augmented_x = transformer.augment_image(x)
-                
+
                 # pass to model
                 p = algorithm.predict(augmented_x.to(device)) 
-                
+
                 if p.squeeze().ndim == 1:
                     p = torch.sigmoid(p).detach().cpu().numpy()
                 else:
@@ -83,7 +86,7 @@ def TTA_eval(algorithm, loader, device):
 
             ps.append(tta_ps)
 
-    breakpoint()
+    print('Test-time augmentation complete')
     return np.concatenate(ps, axis=0)
 
 
@@ -133,8 +136,8 @@ def test_metrics(algorithm, loader, device, thres=0.5):
 
     return res
 
-def eval_metrics(algorithm, loader, device, thres=0.5):
 
+def eval_metrics(algorithm, loader, device, thres=0.5):
     # preds: sigmoid output
     targets, attributes, preds, gs = predict_on_set(algorithm, loader, device) # gs: group sensitive attribute: (target, attribute) pairing?
     preds_rounded = preds >= thres if preds.squeeze().ndim == 1 else preds.argmax(1)
