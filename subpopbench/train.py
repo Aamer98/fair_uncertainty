@@ -250,7 +250,7 @@ if __name__ == "__main__":
                 results[key] = np.mean(val)
 
             curr_metrics = {split: eval_helper.eval_metrics(algorithm, loader, device)
-                            for split, loader in zip(split_names, eval_loaders)}            
+                            for split, loader in zip(split_names, eval_loaders)} 
             full_val_metrics = curr_metrics['va']
 
             for split in sorted(split_names):

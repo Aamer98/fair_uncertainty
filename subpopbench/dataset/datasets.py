@@ -429,7 +429,7 @@ class MIMICNoFinding(BaseImageDataset):
     INPUT_SHAPE = (3, 224, 224,)
 
     def __init__(self, data_path, split, hparams, train_attr='yes', subsample_type=None, duplicates=None):
-        metadata = os.path.join(data_path, "MIMIC-CXR-JPG", 'subpop_bench_meta', "metadata_no_finding.csv")
+        metadata = os.path.join(data_path, "MIMIC-CXR-JPG", 'physionet.org/files/mimic-cxr-jpg/2.0.0/subpop_bench_meta', "metadata_no_finding.csv")
         super().__init__(metadata, split, train_attr, subsample_type, duplicates)
 
 
@@ -458,7 +458,7 @@ class CXRMultisite(BaseImageDataset):
     EVAL_SPLITS = ['te', 'deploy']
 
     def __init__(self, data_path, split, hparams, train_attr='yes', subsample_type=None, duplicates=None):
-        metadata = os.path.join(data_path, "MIMIC-CXR-JPG", 'subpop_bench_meta', "metadata_multisite.csv")
+        metadata = os.path.join(data_path, "MIMIC-CXR-JPG", 'physionet.org/files/mimic-cxr-jpg/2.0.0/subpop_bench_meta', "metadata_multisite.csv")
         super().__init__(metadata, split, train_attr, subsample_type, duplicates)
 
 

@@ -5,14 +5,19 @@ import torch.autograd as autograd
 import numpy as np
 from transformers import get_scheduler
 
-from subpopbench.models import networks
+
+from subpopbench.models import networks, resnet50_dropout
 from subpopbench.learning import joint_dro
 from subpopbench.learning.optimizers import get_optimizers
 from subpopbench.utils.misc import mixup_data
 
-
 ALGORITHMS = [
     'ERM',
+    # uncertainty methods
+    'MCDropout',
+    'DeepEnsemble',
+    'BayesianNN',
+    'TTA',
     # subgroup methods
     'GroupDRO',
     'IRM',
@@ -102,6 +107,82 @@ class Algorithm(torch.nn.Module):
             idx_samples.append(all_a == a)
 
         return zip(idx_a, idx_samples)
+
+
+
+class MCDropout(Algorithm):
+    """MCDropout"""
+    def __init__(self, data_type, input_shape, num_classes, num_attributes, num_examples, hparams, grp_sizes=None):
+        super(MCDropout, self).__init__(
+            data_type, input_shape, num_classes, num_attributes, num_examples, hparams, grp_sizes)
+
+        # self.featurizer = networks.Featurizer(data_type, input_shape, self.hparams)
+
+        
+        self.featurizer = resnet50_dropout.resnet50_dropout_torch()
+        self.classifier = networks.Classifier(
+            512 * self.featurizer.block.expansion,
+            num_classes,
+            self.hparams['nonlinear_classifier']
+        )
+
+        self.network = nn.Sequential(self.featurizer, self.classifier)
+        self._init_model()
+
+    def _init_model(self):
+        self.clip_grad = (self.data_type == "text" and self.hparams["optimizer"] == "adamw")
+
+        if self.data_type in ["images", "tabular"]:
+            self.optimizer = get_optimizers['sgd'](
+                self.network,
+                self.hparams['lr'],
+                self.hparams['weight_decay']
+            )
+            self.lr_scheduler = None
+            self.loss = torch.nn.CrossEntropyLoss(reduction="none")
+        elif self.data_type == "text":
+            self.network.zero_grad()
+            self.optimizer = get_optimizers[self.hparams["optimizer"]](
+                self.network,
+                self.hparams['lr'],
+                self.hparams['weight_decay']
+            )
+            self.lr_scheduler = get_scheduler(
+                "linear",
+                optimizer=self.optimizer,
+                num_warmup_steps=0,
+                num_training_steps=self.hparams["steps"]
+            )
+            self.loss = torch.nn.CrossEntropyLoss(reduction="none")
+        else:
+            raise NotImplementedError(f"{self.data_type} not supported.")
+
+    def _compute_loss(self, i, x, y, a, step):
+        return self.loss(self.predict(x), y).mean()
+
+    def update(self, minibatch, step):
+        all_i, all_x, all_y, all_a = minibatch
+        loss = self._compute_loss(all_i, all_x, all_y, all_a, step)
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        if self.clip_grad:
+            torch.nn.utils.clip_grad_norm_(self.network.parameters(), 1.0)
+        self.optimizer.step()
+
+        if self.lr_scheduler is not None:
+            self.lr_scheduler.step()
+
+        if self.data_type == "text":
+            self.network.zero_grad()
+
+        return {'loss': loss.item()}
+
+    def return_feats(self, x):
+        return self.featurizer(x)
+
+    def predict(self, x):
+        return self.network(x)
 
 
 class ERM(Algorithm):

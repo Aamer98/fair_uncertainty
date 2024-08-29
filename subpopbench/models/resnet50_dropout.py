@@ -28,8 +28,30 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 from torch.nn import Dropout2d
+from torch.Functional as F
 from torchvision.models.resnet import conv1x1
 from torchvision.models.resnet import conv3x3
+
+
+class Identity(nn.Module):
+
+    def __init__(self):
+        super(Identity, self).__init__()
+
+    def forward(self, x):
+        return x
+
+
+def Classifier(in_features, out_features, is_nonlinear=False):
+    if is_nonlinear:
+        return torch.nn.Sequential(
+            torch.nn.Linear(in_features, in_features // 2),
+            torch.nn.ReLU(),
+            torch.nn.Linear(in_features // 2, in_features // 4),
+            torch.nn.ReLU(),
+            torch.nn.Linear(in_features // 4, out_features))
+    else:
+        return torch.nn.Linear(in_features, out_features)
 
 
 class BasicBlock(nn.Module):
@@ -64,6 +86,7 @@ class BasicBlock(nn.Module):
     self.bn2 = norm_layer(planes)
     self.downsample = downsample
     self.stride = stride
+    self.dropout_rate = dropout_rate
 
   def forward(self, x: Tensor) -> Tensor:
     identity = x
@@ -71,7 +94,8 @@ class BasicBlock(nn.Module):
     out = self.conv1(x)
     out = self.bn1(out)
     out = self.relu(out)
-    out = self.dropout(out)
+    # out = self.dropout(out)
+    out = F.dropout2d(out, p=self.dropout_rate, inplace=False,training=True)
 
     out = self.conv2(out)
     out = self.bn2(out)
@@ -81,7 +105,8 @@ class BasicBlock(nn.Module):
 
     out += identity
     out = self.relu(out)
-    out = self.dropout(out)
+    out = F.dropout2d(out, p=self.dropout_rate, inplace=False,training=True)
+    # out = self.dropout(out)
 
     return out
 
@@ -125,6 +150,7 @@ class Bottleneck(nn.Module):
     self.dropout = Dropout2d(p=dropout_rate, inplace=False)
     self.downsample = downsample
     self.stride = stride
+    self.dropout_rate = dropout_rate
 
   def forward(self, x: Tensor) -> Tensor:
     identity = x
@@ -132,12 +158,14 @@ class Bottleneck(nn.Module):
     out = self.conv1(x)
     out = self.bn1(out)
     out = self.relu(out)
-    out = self.dropout(out)
+    # out = self.dropout(out)
+    out = F.dropout2d(out, p=self.dropout_rate, inplace=False, training=True)
 
     out = self.conv2(out)
     out = self.bn2(out)
     out = self.relu(out)
-    out = self.dropout(out)
+    # out = self.dropout(out)
+    out = F.dropout2d(out, p=self.dropout_rate, inplace=False, training=True)
 
     out = self.conv3(out)
     out = self.bn3(out)
@@ -147,11 +175,13 @@ class Bottleneck(nn.Module):
 
     out += identity
     out = self.relu(out)
-    out = self.dropout(out)
+    # out = self.dropout(out)
+    out = F.dropout2d(out, p=self.dropout_rate, inplace=False, training=True)
 
     return out
 
 
+# Featurizer
 class ResNetMCDropout(nn.Module):
   """ResNet50 v1.5."""
 
@@ -171,6 +201,8 @@ class ResNetMCDropout(nn.Module):
     if norm_layer is None:
       norm_layer = nn.BatchNorm2d
     self._norm_layer = norm_layer
+    self.block = block
+    self.dropout_rate = dropout_rate
 
     self.inplanes = 64
     self.dilation = 1
@@ -188,7 +220,7 @@ class ResNetMCDropout(nn.Module):
         3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
     self.bn1 = norm_layer(self.inplanes)
     self.relu = nn.ReLU(inplace=True)
-    self.dropout = Dropout2d(p=dropout_rate, inplace=False)
+    self.dropout = Dropout2d(p=dropout_rate, inplace=False, training=True)
     self.dropout_rate = dropout_rate
     self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
     self.layer1 = self._make_layer(block, 64, layers[0])
@@ -199,7 +231,8 @@ class ResNetMCDropout(nn.Module):
     self.layer4 = self._make_layer(
         block, 512, layers[3], stride=2, dilate=replace_stride_with_dilation[2])
     self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-    self.fc = nn.Linear(512 * block.expansion, num_classes)
+    self.fc = Identity()
+    # self.fc = nn.Linear(512 * block.expansion, num_classes)
 
     for m in self.modules():
       if isinstance(m, nn.Conv2d):
@@ -261,7 +294,8 @@ class ResNetMCDropout(nn.Module):
     x = self.conv1(x)
     x = self.bn1(x)
     x = self.relu(x)
-    x = self.dropout(x)
+    # x = self.dropout(x)
+    x = F.dropout2d(x, p=self.dropout_rate, inplace=False,training=True)
     x = self.maxpool(x)
 
     x = self.layer1(x)
@@ -286,6 +320,7 @@ def _resnet_dropout(block: Type[Union[BasicBlock,
   return model
 
 
+# Featurizer
 def resnet50_dropout_torch(dropout_rate: float = 0.1,
                            **kwargs: Any) -> ResNetMCDropout:
   r"""ResNet-50 v1.5.

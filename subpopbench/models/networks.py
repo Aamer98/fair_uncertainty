@@ -57,6 +57,7 @@ class PretrainedImageModel(torch.nn.Module):
                 m.eval()
 
 
+# Featurizer
 class ResNet(PretrainedImageModel):
 
     def __init__(self, input_shape, hparams, pretrained=True, freeze_bn=False):
