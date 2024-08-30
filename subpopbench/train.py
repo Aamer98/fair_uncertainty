@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import PIL
 import pickle
+import wandb
 import torch
 import torchvision
 import torch.utils.data
@@ -63,6 +64,8 @@ if __name__ == "__main__":
                         choices=['bert-base-uncased', 'gpt2', 'xlm-roberta-base',
                                  'allenai/scibert_scivocab_uncased', 'distilbert-base-uncased'])
     args = parser.parse_args()
+
+    misc.wandb_init(args)
 
     start_step = 0
     store_prefix = f"{args.dataset}_{args.cmnist_label_prob}_{args.cmnist_attr_prob}_{args.cmnist_spur_prob}" \
@@ -240,6 +243,8 @@ if __name__ == "__main__":
 
         for key, val in step_vals.items():
             checkpoint_vals[key].append(val)
+
+        wandb.log({"train/loss": step_vals['loss']})
 
         if (step % checkpoint_freq == 0) or (step == n_steps - 1):
             results = {

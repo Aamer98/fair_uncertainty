@@ -8,6 +8,25 @@ import operator
 import numpy as np
 import torch
 from collections import Counter
+import wandb
+
+
+def wandb_init(args):
+    os.environ["WANDB_API_KEY"] = "7a9cbed74d12db3de9cef466bb7b7cf08bdf1ea4"
+    os.environ["WANDB_MODE"] = "offline"
+    
+    wandb.login()
+
+    run = wandb.init(
+        # Set the project where this run will be logged
+        project=args.dataset,
+        name= f'ALG{args.algorithm}_ARCH{args.image_arch}',
+        # Track hyperparameters and run metadata
+        config={
+            "train_attr": args.train_attr,
+            "pretrained": args.pretrained,
+        },
+    )
 
 
 def prepare_folders(args):

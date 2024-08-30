@@ -92,7 +92,7 @@ def TTA_eval(algorithm, loader, device):
 
 def test_metrics(algorithm, loader, device, thres=0.5):
     # tta uncertainty
-    preds = TTA_eval(algorithm, loader, device)
+    # preds = TTA_eval(algorithm, loader, device)
 
     # preds: sigmoid output
     targets, attributes, preds, gs = predict_on_set(algorithm, loader, device) # gs: group sensitive attribute: (target, attribute) pairing?
@@ -108,6 +108,7 @@ def test_metrics(algorithm, loader, device, thres=0.5):
     res['per_class'] = {}
     res['per_group'] = {}
 
+    breakpoint()
     for a in np.unique(attributes):
         mask = attributes == a
         res['per_attribute'][int(a)] = {
@@ -115,6 +116,7 @@ def test_metrics(algorithm, loader, device, thres=0.5):
             **prob_metrics(targets[mask], preds[mask], label_set)
         }
 
+    breakpoint()
     classes_report = classification_report(targets, preds_rounded, output_dict=True, zero_division=0.)
     res['overall']['macro_avg'] = classes_report['macro avg']
     res['overall']['weighted_avg'] = classes_report['weighted avg']
@@ -122,12 +124,19 @@ def test_metrics(algorithm, loader, device, thres=0.5):
     for y in np.unique(targets):
         res['per_class'][int(y)] = classes_report[str(y)]
 
+    breakpoint()
     for g in np.unique(gs):
         mask = gs == g
         res['per_group'][g] = {
             **binary_metrics(targets[mask], preds_rounded[mask], label_set)
         }
 
+    relevant_results = {}
+
+    # for key in ['accuracy', 'AUROC', 'AUPRC', 'BCE', 'ECE', 'brier', 'balanced_acc', 'pred_prevalence', 'prevalence']:
+
+
+    breakpoint()
     res['adjusted_accuracy'] = sum([res['per_group'][g]['accuracy'] for g in np.unique(gs)]) / len(np.unique(gs))
     res['min_attr'] = pd.DataFrame(res['per_attribute']).min(axis=1).to_dict()
     res['max_attr'] = pd.DataFrame(res['per_attribute']).max(axis=1).to_dict()

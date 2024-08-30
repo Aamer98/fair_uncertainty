@@ -28,7 +28,7 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 from torch.nn import Dropout2d
-from torch.Functional as F
+import torch.nn.functional as F
 from torchvision.models.resnet import conv1x1
 from torchvision.models.resnet import conv3x3
 
@@ -220,7 +220,7 @@ class ResNetMCDropout(nn.Module):
         3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
     self.bn1 = norm_layer(self.inplanes)
     self.relu = nn.ReLU(inplace=True)
-    self.dropout = Dropout2d(p=dropout_rate, inplace=False, training=True)
+    self.dropout = Dropout2d(p=dropout_rate, inplace=False)
     self.dropout_rate = dropout_rate
     self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
     self.layer1 = self._make_layer(block, 64, layers[0])
