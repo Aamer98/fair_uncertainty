@@ -257,6 +257,8 @@ if __name__ == "__main__":
             curr_metrics = {split: eval_helper.eval_metrics(algorithm, loader, device)
                             for split, loader in zip(split_names, eval_loaders)} 
             full_val_metrics = curr_metrics['va']
+            
+            breakpoint()
 
             for split in sorted(split_names):
                 results[f'{split}_avg_acc'] = curr_metrics[split]['overall']['accuracy']
@@ -276,6 +278,10 @@ if __name__ == "__main__":
                 'args': vars(args),
             })
             results.update(curr_metrics)
+
+            # wandb logging
+            breakpoint()
+
 
             epochs_path = os.path.join(args.output_dir, 'results.json')
             with open(epochs_path, 'a') as f:
