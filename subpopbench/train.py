@@ -258,7 +258,25 @@ if __name__ == "__main__":
                             for split, loader in zip(split_names, eval_loaders)} 
             full_val_metrics = curr_metrics['va']
             
-            breakpoint()
+
+            # wandb logger: val
+            for group in ['overall']:#, 'per_attribute', 'per_class', 'per_group']:
+                if group == 'overall':
+                    for metric in ['accuracy', 'balanced_acc', 'ECE', 'BCE', 'AUROC', 'AUPRC', 'macro_avg', 'weighted_avg']:
+                        if metric not in ['macro_avg', 'weighted_avg']:
+                            wandb.log({f"val/{group}/{metric}": full_val_metrics[group][metric]})
+                        else:
+                            for avg_metric in ['precision', 'recall', 'f1-score']:
+                                wandb.log({f"val/{group}/{metric}/{metric}_{avg_metric}": full_val_metrics[group][metric][avg_metric]})
+                else:
+                    for sub_group in full_val_metrics[group].keys():
+                        for metric in ['accuracy', 'balanced_acc', 'ECE', 'BCE', 'AUROC', 'AUPRC', 'macro_avg', 'weighted_avg']:
+                            if metric not in ['macro_avg', 'weighted_avg']:
+                                wandb.log({f"val/{group}_{sub_group}/{metric}": full_val_metrics[group][sub_group][metric]})
+                            else:
+                                for avg_metric in ['precision', 'recall', 'f1-score']:
+                                    wandb.log({f"val/{group}_{sub_group}/{metric}/{metric}_{avg_metric}": full_val_metrics[group][sub_group][metric][avg_metric]})
+
 
             for split in sorted(split_names):
                 results[f'{split}_avg_acc'] = curr_metrics[split]['overall']['accuracy']
@@ -277,11 +295,7 @@ if __name__ == "__main__":
                 'hparams': hparams,
                 'args': vars(args),
             })
-            results.update(curr_metrics)
-
-            # wandb logging
-            breakpoint()
-
+            results.update(curr_metrics)            
 
             epochs_path = os.path.join(args.output_dir, 'results.json')
             with open(epochs_path, 'a') as f:
@@ -342,6 +356,12 @@ if __name__ == "__main__":
     final_results = {split: eval_helper.test_metrics(algorithm, loader, device)
                      for split, loader in zip(split_names, final_eval_loaders)}
     pickle.dump(final_results, open(os.path.join(args.output_dir, 'final_results.pkl'), 'wb'))
+    
+
+    # wandb logger: test
+    breakpoint()
+    df = pd.DataFrame(final_results['te']['per_group']).T
+
 
     print("\nTest accuracy (best validation checkpoint):")
     print(f"\tmean:\t[{final_results['te']['overall']['accuracy']:.3f}]\n"
