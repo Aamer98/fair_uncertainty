@@ -359,8 +359,24 @@ if __name__ == "__main__":
     
 
     # wandb logger: test
-    breakpoint()
-    df = pd.DataFrame(final_results['te']['per_group']).T
+    
+    overall_results = {}
+    
+    for metric, value in final_results['te']['overall'].items():
+        if metric not in ['macro_avg', 'weighted_avg']:
+            overall_results[metric] = value
+        else:
+            for sub_metric in ['precision', 'recall', 'f1-score']:
+                overall_results[f"{metric}_{sub_metric}"] = value[sub_metric]
+
+
+    df_group = pd.DataFrame(final_results['te']['per_group']).T
+    df_attribute = pd.DataFrame(final_results['te']['per_attribute']).T
+    df_overall = pd.DataFrame({'Overall': overall_results}).T
+
+    df = pd.concat([df_overall, df_group, df_attribute])
+    test_table = wandb.Table(dataframe=df)
+    wandb.log({"test_table": test_table})
 
 
     print("\nTest accuracy (best validation checkpoint):")

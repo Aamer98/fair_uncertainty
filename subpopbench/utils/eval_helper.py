@@ -126,7 +126,7 @@ def test_metrics(algorithm, loader, device, thres=0.5):
         mask = gs == g
         res['per_group'][g] = {
             **binary_metrics(targets[mask], preds_rounded[mask], label_set),
-            **prob_metrics(targets[mask], preds[mask], label_set)
+            **attribute_metrics(targets[mask], preds[mask], label_set)
         }
 
     res['adjusted_accuracy'] = sum([res['per_group'][g]['accuracy'] for g in np.unique(gs)]) / len(np.unique(gs))
@@ -170,7 +170,8 @@ def eval_metrics(algorithm, loader, device, thres=0.5):
     for g in np.unique(gs):
         mask = gs == g
         res['per_group'][g] = {
-            **binary_metrics(targets[mask], preds_rounded[mask], label_set)
+            **binary_metrics(targets[mask], preds_rounded[mask], label_set),
+            **attribute_metrics(targets[mask], preds[mask], label_set)
         }
 
     res['adjusted_accuracy'] = sum([res['per_group'][g]['accuracy'] for g in np.unique(gs)]) / len(np.unique(gs))
@@ -222,6 +223,26 @@ def binary_metrics(targets, preds, label_set=[0, 1], return_arrays=False):
 
     if len(np.unique(targets)) > 1:
         res['balanced_acc'] = balanced_accuracy_score(targets, preds)
+
+    if return_arrays:
+        res['targets'] = targets
+        res['preds'] = preds
+
+    return res
+
+
+def attribute_metrics(targets, preds, label_set, return_arrays=False):
+    if len(targets) == 0:
+        return {}
+
+    res = {
+        'BCE': log_loss(targets, preds, eps=1e-6, labels=label_set),
+        'ECE': netcal.metrics.ECE().measure(preds, targets)
+    }
+
+    if len(set(targets)) == 2:
+        res['AUPRC'] = average_precision_score(targets, preds, average='macro')
+        res['brier'] = brier_score_loss(targets, preds)
 
     if return_arrays:
         res['targets'] = targets
