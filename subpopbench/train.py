@@ -378,6 +378,7 @@ if __name__ == "__main__":
     test_table = wandb.Table(dataframe=df)
     wandb.log({"test_table": test_table})
 
+    df.to_csv(os.path.join(args.output_dir, 'test_results.csv'))
 
     print("\nTest accuracy (best validation checkpoint):")
     print(f"\tmean:\t[{final_results['te']['overall']['accuracy']:.3f}]\n"
