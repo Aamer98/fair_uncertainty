@@ -9,9 +9,9 @@
 #SBATCH --output=%x-%j.out
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
-#SBATCH --ntasks-per-node=32
+#SBATCH --cpus-per-task=12
 #SBATCH --mem=21000M
-#SBATCH --time=0-0:30
+#SBATCH --time=0-10:30
 #SBATCH --account=rrg-ebrahimi
 
 nvidia-smi
