@@ -32,11 +32,14 @@ if __name__ == "__main__":
     # others
     parser.add_argument('--data_dir', type=str, default="./data")
     parser.add_argument('--output_dir', type=str, default="./output")
+    parser.add_argument('--exp_name', type=str, default='')
     parser.add_argument('--hparams', type=str, help='JSON-serialized hparams dict')
     parser.add_argument('--hparams_seed', type=int, default=0, help='Seed for random hparams (0 for "default hparams")')
     parser.add_argument('--seed', type=int, default=0, help='Seed for everything else')
     parser.add_argument('--steps', type=int, default=None)
     parser.add_argument('--tb_log_all', action='store_true')
+    # uncertainty measures
+    parser.add_argument('--dropout_iters', type=int, default=5)
     # two-stage related
     parser.add_argument('--stage1_folder', type=str, default='vanilla')
     parser.add_argument('--stage1_algo', type=str, default='ERM')
@@ -166,6 +169,11 @@ if __name__ == "__main__":
         batch_size=hparams['batch_size'],
         num_workers=num_workers
     )
+    _train_loader = FastDataLoader(
+        dataset=train_dataset,
+        batch_size=hparams['batch_size'],
+        num_workers=num_workers
+    )
     split_names = ['va'] + vars(datasets)[args.dataset].EVAL_SPLITS
     eval_loaders = [FastDataLoader(
         dataset=dset,
@@ -257,7 +265,7 @@ if __name__ == "__main__":
             curr_metrics = {split: eval_helper.eval_metrics(algorithm, loader, device)
                             for split, loader in zip(split_names, eval_loaders)} 
             full_val_metrics = curr_metrics['va']
-            
+
 
             # wandb logger: val
             for group in ['overall']:#, 'per_attribute', 'per_class', 'per_group']:
@@ -288,7 +296,7 @@ if __name__ == "__main__":
                 misc.print_row([key for key in results_keys if key not in {'mem_gb', 'step_time'}], colwidth=12)
                 last_results_keys = results_keys
             misc.print_row([results[key] for key in results_keys if key not in {'mem_gb', 'step_time'}], colwidth=12)
-            
+
             results['mem_gb'] = torch.cuda.max_memory_allocated() / (1024.*1024.*1024.)
 
             results.update({
@@ -353,15 +361,22 @@ if __name__ == "__main__":
         num_workers=num_workers)
         for dset in [vars(datasets)[args.dataset](args.data_dir, split, hparams) for split in split_names]
     ]
-    final_results = {split: eval_helper.test_metrics(algorithm, loader, device)
-                     for split, loader in zip(split_names, final_eval_loaders)}
-    pickle.dump(final_results, open(os.path.join(args.output_dir, 'final_results.pkl'), 'wb'))
     
+    if args.algorithm == 'MCDropout':
+        final_results = {split: eval_helper.test_mcdropout(algorithm, loader, _train_loader, device)
+                        for split, loader in zip(split_names, final_eval_loaders)}
+    elif args.algorithm == 'TTA':
+        final_results = {split: eval_helper.test_TTA(algorithm, loader, _train_loader, device)
+                        for split, loader in zip(split_names, final_eval_loaders)}
+    else:
+        final_results = {split: eval_helper.test_metrics(algorithm, loader, _train_loader, device)
+                        for split, loader in zip(split_names, final_eval_loaders)}
+    
+    pickle.dump(final_results, open(os.path.join(args.output_dir, 'final_results.pkl'), 'wb'))
 
     # wandb logger: test
-    
     overall_results = {}
-    
+
     for metric, value in final_results['te']['overall'].items():
         if metric not in ['macro_avg', 'weighted_avg']:
             overall_results[metric] = value
@@ -372,9 +387,17 @@ if __name__ == "__main__":
 
     df_group = pd.DataFrame(final_results['te']['per_group']).T
     df_attribute = pd.DataFrame(final_results['te']['per_attribute']).T
-    df_overall = pd.DataFrame({'Overall': overall_results}).T
+    # df_class = pd.DataFrame(final_results['te']['per_class']).T #TODO
+    df_overall = pd.DataFrame({'overall': overall_results}).T
 
+    
     df = pd.concat([df_overall, df_group, df_attribute])
+    # df['groups'] = df.index
+    df_index = [str(i) for i in df.index]
+    df['groups'] = df_index
+
+    breakpoint()
+
     test_table = wandb.Table(dataframe=df)
     wandb.log({"test_table": test_table})
 
