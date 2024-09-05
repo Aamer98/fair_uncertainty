@@ -191,7 +191,7 @@ if __name__ == "__main__":
     es = early_stopping.EarlyStopping(
         patience=args.es_patience, lower_is_better=early_stopping.lower_is_better[es_metric])
     best_model_path = os.path.join(args.output_dir, 'model.best.pkl')
-
+    
     # load stage1 model if using 2-stage algorithm
     if 'CRT' in args.algorithm or 'DFR' in args.algorithm:
         args.pretrained = os.path.join(
@@ -395,8 +395,6 @@ if __name__ == "__main__":
     # df['groups'] = df.index
     df_index = [str(i) for i in df.index]
     df['groups'] = df_index
-
-    breakpoint()
 
     test_table = wandb.Table(dataframe=df)
     wandb.log({"test_table": test_table})

@@ -4,6 +4,7 @@ import pandas as pd
 from sklearn.metrics import (accuracy_score, confusion_matrix, roc_auc_score, average_precision_score,
                              balanced_accuracy_score, recall_score, brier_score_loss, log_loss, classification_report)
 import netcal.metrics
+from torch_uncertainty.metrics import Entropy, FPR95, BrierScore, Disagreement, MutualInformation, VariationRatio
 
 import ttach as tta # test time augmentation package
 
@@ -224,7 +225,7 @@ def test_TTA(algorithm, loader, train_loader, device):
     return res
 
 
-def test_mcdropout(algorithm, loader, train_loader, device, thres=0.5, dropout_iters=[1,5]):
+def test_mcdropout(algorithm, loader, train_loader, device, thres=0.5, dropout_iters=5):
 
     # Get train samples
     train_targets, train_attributes, train_gs = get_samples(train_loader)
@@ -476,6 +477,7 @@ def binary_metrics(targets, preds, label_set=[0, 1], return_arrays=False):
     if return_arrays:
         res['targets'] = targets
         res['preds'] = preds
+
 
     return res
 
