@@ -104,6 +104,7 @@ def TTA_eval(algorithm, loader, device):
     return np.concatenate(ps, axis=0)
 
 
+<<<<<<< HEAD
 def test_TTA(algorithm, loader, train_loader, device):
 
     # Get train samples
@@ -121,10 +122,18 @@ def test_TTA(algorithm, loader, train_loader, device):
         ]
     )
 
+=======
+def test_mcdropout(algorithm, loader, device, thres=0.5, dropout_iters=50):
+
+    output_list = []
+
+    algorithm.train() # to enable dropout
+>>>>>>> 85ebb0d (dropout uncertainty)
     for i in range(dropout_iters):
         targets, attributes, preds, gs = predict_on_set(algorithm, loader, device) # gs: group sensitive attribute: (target, attribute) pairing?
         output_list.append(torch.from_numpy(preds))
 
+<<<<<<< HEAD
     # Calculate model batch statistics
     output_list = [x.unsqueeze(-1).unsqueeze(-1) for x in output_list]
     output_list = torch.cat(output_list,-1)
@@ -340,6 +349,42 @@ def test_metrics(algorithm, loader, train_loader, device, thres=0.5):
 
     # Get train samples
     train_targets, _, _ = get_samples(train_loader)
+=======
+    output_list = [x.unsqueeze(-1).unsqueeze(-1) for x in output_list]
+    output_list = torch.cat(output_list,-1)
+    output_list = output_list.reshape(output_list.shape[-1], output_list.shape[0], output_list.shape[1]) # dim: (Dropout iters, total samples, output dim)
+
+    output_mean = output_list.mean(dim=0)
+    output_variance = output_list.var(dim=0).mean().item()
+
+    dropout_res = {}
+
+    # Overall 
+    dropout_res['overall'] = {'mean': output_list.mean().item(), 
+                              'variance': output_list.var(dim=0).mean().item()}
+
+    dropout_res['per_attribute'] = {}
+    dropout_res['per_class'] = {}
+    dropout_res['per_group'] = {}
+
+    # Per attribute
+    for a in np.unique(attributes):
+        mask = attributes == a
+        output_sublist = output_list[:, mask, :]
+        dropout_res['per_attribute'][int(a)] = {'mean': output_sublist.mean().item(), 
+                                                'variance': output_sublist.var(dim=0).mean().item()}
+
+    for g in np.unique(gs):
+        mask = gs == g
+        output_sublist = output_list[:, mask, :]
+        dropout_res['per_group'][int(a)] = {'mean': output_sublist.mean().item(), 
+                                            'variance': output_sublist.var(dim=0).mean().item()}
+
+    return dropout_res
+
+
+def test_metrics(algorithm, loader, device, thres=0.5):
+>>>>>>> 85ebb0d (dropout uncertainty)
 
     # preds: sigmoid output
     targets, attributes, preds, gs = predict_on_set(algorithm, loader, device) # gs: group sensitive attribute: (target, attribute) pairing?

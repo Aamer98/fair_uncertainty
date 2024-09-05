@@ -362,6 +362,7 @@ if __name__ == "__main__":
         for dset in [vars(datasets)[args.dataset](args.data_dir, split, hparams) for split in split_names]
     ]
     
+<<<<<<< HEAD
     if args.algorithm == 'MCDropout':
         final_results = {split: eval_helper.test_mcdropout(algorithm, loader, _train_loader, device)
                         for split, loader in zip(split_names, final_eval_loaders)}
@@ -373,7 +374,14 @@ if __name__ == "__main__":
                         for split, loader in zip(split_names, final_eval_loaders)}
     
     pickle.dump(final_results, open(os.path.join(args.output_dir, 'final_results.pkl'), 'wb'))
+=======
+    # MCDropout evaluation
+    if args.algorithm == 'MCDropout':
+        uncertainty_results = {split: eval_helper.test_mcdropout(algorithm, loader, device)
+                     for split, loader in zip(split_names, final_eval_loaders)}
+>>>>>>> 85ebb0d (dropout uncertainty)
 
+    breakpoint()
     # wandb logger: test
     overall_results = {}
 
