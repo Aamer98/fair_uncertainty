@@ -192,8 +192,7 @@ if __name__ == "__main__":
         patience=args.es_patience, lower_is_better=early_stopping.lower_is_better[es_metric])
     
 
-    breakpoint()
-    checkpoint_path = os.path.join(args.output_dir, 'model.pkl')
+    checkpoint_path = os.path.join(args.output_dir, 'model.best.pkl')
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
 
     from collections import OrderedDict
@@ -207,8 +206,6 @@ if __name__ == "__main__":
 
     algorithm.to(device)
 
-    breakpoint()
-
     split_names = ['va'] + vars(datasets)[args.dataset].EVAL_SPLITS
     final_eval_loaders = [FastDataLoader(
         dataset=dset,
@@ -217,8 +214,9 @@ if __name__ == "__main__":
         for dset in [vars(datasets)[args.dataset](args.data_dir, split, hparams) for split in split_names]
     ]
 
+    algorithm.eval()
     if args.algorithm == 'MCDropout':
-        algorithm.eval()
+        algorithm.train()
         final_results = {split: eval_helper.test_mcdropout(algorithm, loader, _train_loader, device)
                         for split, loader in zip(split_names, final_eval_loaders)}
     elif args.algorithm == 'TTA':
@@ -252,8 +250,9 @@ if __name__ == "__main__":
     df_index = [str(i) for i in df.index]
     df['groups'] = df_index
 
-    test_table = wandb.Table(dataframe=df)
-    wandb.log({"test_table": test_table})
+    breakpoint()
+    # test_table = wandb.Table(dataframe=df)
+    # wandb.log({"test_table": test_table})
 
     df.to_csv(os.path.join(args.output_dir, 'test_results.csv'))
 

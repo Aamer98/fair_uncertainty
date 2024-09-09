@@ -112,8 +112,6 @@ def test_TTA(algorithm, loader, train_loader, device):
 
     output_list = []
     
-    breakpoint()
-
     transforms = tta.Compose(
         [
             tta.HorizontalFlip(),
@@ -337,14 +335,15 @@ def test_mcdropout(algorithm, loader, train_loader, device, thres=0.5, dropout_i
 
 
 def test_metrics(algorithm, loader, train_loader, device, thres=0.5):
-
+    
     # Get train samples
-    train_targets, train_attributes, train_preds = get_samples(train_loader)
+    train_targets, train_attributes, train_gs = get_samples(train_loader)
 
     # preds: sigmoid output
     targets, attributes, preds, gs = predict_on_set(algorithm, loader, device) # gs: group sensitive attribute: (target, attribute) pairing?
     preds_rounded = preds >= thres if preds.squeeze().ndim == 1 else preds.argmax(1)
     label_set = np.unique(targets) # set of labels: but why?
+
 
     # Calculate metrics
     res = {}
@@ -360,6 +359,7 @@ def test_metrics(algorithm, loader, train_loader, device, thres=0.5):
 
     ## Per attribute metrics
     for a in np.unique(attributes):
+        breakpoint()
         mask = attributes == a
         res['per_attribute'][str(a)] = {
             **binary_metrics(targets[mask], preds_rounded[mask], label_set),
@@ -383,7 +383,6 @@ def test_metrics(algorithm, loader, train_loader, device, thres=0.5):
         }
         train_mask = train_targets == c
         res['per_class'][f'class_{str(c)}']['train_n_samples'] = len(train_targets[train_mask])
-
 
     ## Per group metrics
     for g in np.unique(gs):

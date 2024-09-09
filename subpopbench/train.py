@@ -200,7 +200,7 @@ if __name__ == "__main__":
         args.pretrained = args.pretrained.replace(
             f"seed{args.pretrained[args.pretrained.find('seed') + len('seed')]}", 'seed0')
         assert os.path.isfile(args.pretrained)
-
+    
     if args.pretrained:
         checkpoint = torch.load(args.pretrained, map_location="cpu")
         from collections import OrderedDict
