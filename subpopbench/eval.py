@@ -190,169 +190,24 @@ if __name__ == "__main__":
     es_metric = args.es_metric.split(':')[1]
     es = early_stopping.EarlyStopping(
         patience=args.es_patience, lower_is_better=early_stopping.lower_is_better[es_metric])
-    best_model_path = os.path.join(args.output_dir, 'model.best.pkl')
     
-    # load stage1 model if using 2-stage algorithm
-    if 'CRT' in args.algorithm or 'DFR' in args.algorithm:
-        args.pretrained = os.path.join(
-            args.output_dir.replace(args.output_folder_name, args.stage1_folder), hparams['stage1_model']
-        ).replace(args.algorithm, args.stage1_algo)
-        args.pretrained = args.pretrained.replace(
-            f"seed{args.pretrained[args.pretrained.find('seed') + len('seed')]}", 'seed0')
-        assert os.path.isfile(args.pretrained)
 
-    if args.pretrained:
-        checkpoint = torch.load(args.pretrained, map_location="cpu")
-        from collections import OrderedDict
-        new_state_dict = OrderedDict()
-        for k, v in checkpoint['model_dict'].items():
-            if 'classifier' not in k and 'network.1.' not in k:
-                new_state_dict[k] = v
-        algorithm.load_state_dict(new_state_dict, strict=False)
-        print(f"===> Pretrained weights found in total: [{len(list(new_state_dict.keys()))}]")
-        print(f"===> Pre-trained model loaded: '{args.pretrained}'")
+    breakpoint()
+    checkpoint_path = os.path.join(args.output_dir, 'model.pkl')
+    checkpoint = torch.load(checkpoint_path, map_location="cpu")
 
-    if args.resume:
-        if os.path.isfile(args.resume):
-            print(f"===> Loading checkpoint '{args.resume}'")
-            checkpoint = torch.load(args.resume)
-            start_step = checkpoint['start_step']
-            args.best_val_acc = checkpoint['best_val_acc']
-            algorithm.load_state_dict(checkpoint['model_dict'])
-            es = checkpoint['early_stopper']
-            print(f"===> Loaded checkpoint '{args.resume}' (step [{start_step}])")
-        else:
-            print(f"===> No checkpoint found at '{args.resume}'")
+    from collections import OrderedDict
+    new_state_dict = OrderedDict()
+    for k, v in checkpoint['model_dict'].items():
+        if 'classifier' not in k and 'network.1.' not in k:
+            new_state_dict[k] = v
+    algorithm.load_state_dict(new_state_dict, strict=False)
+    print(f"===> Pretrained weights found in total: [{len(list(new_state_dict.keys()))}]")
+    print(f"===> Pre-trained model loaded: '{args.pretrained}'")
 
     algorithm.to(device)
 
-    train_minibatches_iterator = iter(train_loader)
-    checkpoint_vals = collections.defaultdict(lambda: [])
-    steps_per_epoch = len(train_dataset) / hparams['batch_size']
-
-    def save_checkpoint(save_dict, filename='model.pkl'):
-        if args.skip_model_save:
-            return
-        filename = os.path.join(args.output_dir, filename)
-        torch.save(save_dict, filename)
-
-    last_results_keys = None
-    for step in range(start_step, n_steps):
-        if args.use_es and es.early_stop:
-            print(f"Early stopping at step {step} with best {args.es_metric}={es.best_score}.")
-            break
-        step_start_time = time.time()
-        i, x, y, a = next(train_minibatches_iterator)
-        minibatch_device = (i, x.to(device), y.to(device), a.to(device))
-
-        algorithm.train()
-        step_vals = algorithm.update(minibatch_device, step)
-        checkpoint_vals['step_time'].append(time.time() - step_start_time)
-
-        for key, val in step_vals.items():
-            checkpoint_vals[key].append(val)
-
-        wandb.log({"train/loss": step_vals['loss']})
-
-        if (step % checkpoint_freq == 0) or (step == n_steps - 1):
-            results = {
-                'step': step,
-                'epoch': step / steps_per_epoch,
-            }
-            for key, val in checkpoint_vals.items():
-                results[key] = np.mean(val)
-
-            curr_metrics = {split: eval_helper.eval_metrics(algorithm, loader, device)
-                            for split, loader in zip(split_names, eval_loaders)} 
-            full_val_metrics = curr_metrics['va']
-
-
-            # wandb logger: val
-            for group in ['overall']:#, 'per_attribute', 'per_class', 'per_group']:
-                if group == 'overall':
-                    for metric in ['accuracy', 'balanced_acc', 'ECE', 'BCE', 'AUROC', 'AUPRC', 'macro_avg', 'weighted_avg']:
-                        if metric not in ['macro_avg', 'weighted_avg']:
-                            wandb.log({f"val/{group}/{metric}": full_val_metrics[group][metric]})
-                        else:
-                            for avg_metric in ['precision', 'recall', 'f1-score']:
-                                wandb.log({f"val/{group}/{metric}/{metric}_{avg_metric}": full_val_metrics[group][metric][avg_metric]})
-                else:
-                    for sub_group in full_val_metrics[group].keys():
-                        for metric in ['accuracy', 'balanced_acc', 'ECE', 'BCE', 'AUROC', 'AUPRC', 'macro_avg', 'weighted_avg']:
-                            if metric not in ['macro_avg', 'weighted_avg']:
-                                wandb.log({f"val/{group}_{sub_group}/{metric}": full_val_metrics[group][sub_group][metric]})
-                            else:
-                                for avg_metric in ['precision', 'recall', 'f1-score']:
-                                    wandb.log({f"val/{group}_{sub_group}/{metric}/{metric}_{avg_metric}": full_val_metrics[group][sub_group][metric][avg_metric]})
-
-
-            for split in sorted(split_names):
-                results[f'{split}_avg_acc'] = curr_metrics[split]['overall']['accuracy']
-                results[f'{split}_worst_acc'] = curr_metrics[split]['min_group']['accuracy']            
-
-            results_keys = list(results.keys())
-            if results_keys != last_results_keys:
-                print("\n")
-                misc.print_row([key for key in results_keys if key not in {'mem_gb', 'step_time'}], colwidth=12)
-                last_results_keys = results_keys
-            misc.print_row([results[key] for key in results_keys if key not in {'mem_gb', 'step_time'}], colwidth=12)
-
-            results['mem_gb'] = torch.cuda.max_memory_allocated() / (1024.*1024.*1024.)
-
-            results.update({
-                'hparams': hparams,
-                'args': vars(args),
-            })
-            results.update(curr_metrics)            
-
-            epochs_path = os.path.join(args.output_dir, 'results.json')
-            with open(epochs_path, 'a') as f:
-                f.write(json.dumps(results, sort_keys=True) + "\n")
-
-            save_dict = {
-                "args": vars(args),
-                "best_es_metric": es.best_score,
-                "start_step": step + 1,
-                "num_labels": num_labels,
-                "num_attributes": train_dataset.num_attributes,
-                "model_input_shape": input_shape,
-                "model_hparams": hparams,
-                "model_dict": algorithm.state_dict(),
-                "early_stopper": es,
-            }
-            save_checkpoint(save_dict)
-
-            # tensorboard logger
-            for key in checkpoint_vals.keys() - {'step_time'}:
-                tb_logger.log_value(key, results[key], step)
-            for key in split_names:
-                tb_logger.log_value(f"{key}_avg_acc", results[f"{key}_avg_acc"], step)
-                tb_logger.log_value(f"{key}_worst_acc", results[f"{key}_worst_acc"], step)
-            if args.tb_log_all:
-                for key1 in full_val_metrics:
-                    for key2 in full_val_metrics[key1]:
-                        if isinstance(full_val_metrics[key1][key2], dict):
-                            for key3 in full_val_metrics[key1][key2]:
-                                tb_logger.log_value(f"{key1}_{key2}_{key3}", full_val_metrics[key1][key2][key3], step)
-                        else:
-                            tb_logger.log_value(f"{key1}_{key2}", full_val_metrics[key1][key2], step)
-            if hasattr(algorithm, 'optimizer'):
-                tb_logger.log_value('learning_rate', algorithm.optimizer.param_groups[0]['lr'], step)
-
-            if args.use_es:
-                if args.es_strategy == 'metric':
-                    es_metric_val = full_val_metrics[es_group][es_metric]
-
-                es(es_metric_val, step, save_dict, best_model_path)
-                tb_logger.log_value('es_metric', es_metric_val, step)
-
-            checkpoint_vals = collections.defaultdict(lambda: [])
-
-    # load best model and get metrics on eval sets
-    if args.use_es and not args.skip_model_save:
-        algorithm.load_state_dict(torch.load(os.path.join(args.output_dir, "model.best.pkl"))['model_dict'])
-
-    algorithm.eval()
+    breakpoint()
 
     split_names = ['va'] + vars(datasets)[args.dataset].EVAL_SPLITS
     final_eval_loaders = [FastDataLoader(
@@ -363,7 +218,7 @@ if __name__ == "__main__":
     ]
 
     if args.algorithm == 'MCDropout':
-        algorithm.train()
+        algorithm.eval()
         final_results = {split: eval_helper.test_mcdropout(algorithm, loader, _train_loader, device)
                         for split, loader in zip(split_names, final_eval_loaders)}
     elif args.algorithm == 'TTA':
@@ -393,6 +248,7 @@ if __name__ == "__main__":
 
     
     df = pd.concat([df_overall, df_group, df_class, df_attribute])
+    # df['groups'] = df.index
     df_index = [str(i) for i in df.index]
     df['groups'] = df_index
 
