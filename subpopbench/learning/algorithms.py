@@ -185,6 +185,8 @@ class MCDropout(Algorithm):
         return self.network(x)
 
 
+
+
 class ERM(Algorithm):
     """Empirical Risk Minimization (ERM)"""
     def __init__(self, data_type, input_shape, num_classes, num_attributes, num_examples, hparams, grp_sizes=None):
@@ -254,6 +256,21 @@ class ERM(Algorithm):
 
     def predict(self, x):
         return self.network(x)
+
+
+class TTA(ERM):
+    def __init__(self, data_type, input_shape, num_classes, num_attributes, num_examples, hparams, grp_sizes=None):
+        super(TTA, self).__init__(
+            data_type, input_shape, num_classes, num_attributes, num_examples, hparams, grp_sizes)    
+
+        self.featurizer = networks.Featurizer(data_type, input_shape, self.hparams)
+        self.classifier = networks.Classifier(
+            self.featurizer.n_outputs,
+            num_classes,
+            self.hparams['nonlinear_classifier']
+        )
+        self.network = nn.Sequential(self.featurizer, self.classifier)
+        self._init_model()
 
 
 class GroupDRO(ERM):

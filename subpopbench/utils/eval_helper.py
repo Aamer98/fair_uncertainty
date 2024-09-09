@@ -112,6 +112,15 @@ def test_TTA(algorithm, loader, train_loader, device):
 
     output_list = []
     
+    '''
+    functional.horizontal_flip
+
+    functional.vertical_flip
+
+
+    '''
+
+    breakpoint()
     transforms = tta.Compose(
         [
             tta.HorizontalFlip(),
@@ -359,7 +368,6 @@ def test_metrics(algorithm, loader, train_loader, device, thres=0.5):
 
     ## Per attribute metrics
     for a in np.unique(attributes):
-        breakpoint()
         mask = attributes == a
         res['per_attribute'][str(a)] = {
             **binary_metrics(targets[mask], preds_rounded[mask], label_set),
@@ -506,7 +514,8 @@ def attribute_metrics(targets, preds, label_set, return_arrays=False):
 
     res = {
         'BCE': log_loss(targets, preds, eps=1e-6, labels=label_set),
-        'ECE': netcal.metrics.ECE().measure(preds, targets)
+        'ECE': netcal.metrics.ECE().measure(preds, targets),
+        'MSE': np.mean((targets - preds) ** 2)
     }
 
     if len(set(targets)) == 2:
@@ -530,7 +539,8 @@ def prob_metrics(targets, preds, label_set, return_arrays=False):
     res = {
         'AUROC_ovo': roc_auc_score(targets, preds, multi_class='ovo', labels=label_set),
         'BCE': log_loss(targets, preds, eps=1e-6, labels=label_set),
-        'ECE': netcal.metrics.ECE().measure(preds, targets)
+        'ECE': netcal.metrics.ECE().measure(preds, targets),
+        'MSE': np.mean((targets - preds) ** 2)
     }
 
     # happens when you predict a class, but there are no samples with that class in the dataset

@@ -73,8 +73,9 @@ if __name__ == "__main__":
     start_step = 0
     store_prefix = f"{args.dataset}_{args.cmnist_label_prob}_{args.cmnist_attr_prob}_{args.cmnist_spur_prob}" \
                    f"_{args.cmnist_flip_prob}" if args.dataset == "CMNIST" else args.dataset
+    
     args.store_name = f"{store_prefix}_{args.algorithm}_hparams{args.hparams_seed}_seed{args.seed}"
-    args.output_folder_name += "_attrYes" if args.train_attr == 'yes' else "_attrNo"
+    args.output_folder_name += "_attrNo" #"_attrYes" if args.train_attr == 'yes' else "_attrNo"
 
     misc.prepare_folders(args)
     args.output_dir = os.path.join(args.output_dir, args.output_folder_name, args.store_name)
@@ -222,6 +223,9 @@ if __name__ == "__main__":
     elif args.algorithm == 'TTA':
         final_results = {split: eval_helper.test_TTA(algorithm, loader, _train_loader, device)
                         for split, loader in zip(split_names, final_eval_loaders)}
+    elif args.algorithm == 'ensemble':
+        final_results = {split: eval_helper.test_TTA(algorithm, loader, _train_loader, device)
+                        for split, loader in zip(split_names, final_eval_loaders)}    
     else:
         final_results = {split: eval_helper.test_metrics(algorithm, loader, _train_loader, device)
                         for split, loader in zip(split_names, final_eval_loaders)}
