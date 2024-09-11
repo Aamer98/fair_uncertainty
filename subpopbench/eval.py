@@ -39,7 +39,7 @@ if __name__ == "__main__":
     parser.add_argument('--steps', type=int, default=None)
     parser.add_argument('--tb_log_all', action='store_true')
     # uncertainty measures
-    parser.add_argument('--dropout_iters', type=int, default=5)
+    parser.add_argument('--mc_iters', type=int, default=5)
     # two-stage related
     parser.add_argument('--stage1_folder', type=str, default='vanilla')
     parser.add_argument('--stage1_algo', type=str, default='ERM')
@@ -193,7 +193,10 @@ if __name__ == "__main__":
         patience=args.es_patience, lower_is_better=early_stopping.lower_is_better[es_metric])
     
 
-    checkpoint_path = os.path.join(args.output_dir, 'model.best.pkl')
+    if args.algorithm == 'TTA' or args.algorithm == 'ensemble':
+        checkpoint_path = os.path.join(args.output_dir, 'model.best.pkl').replace('TTA', 'ERM')
+    else:
+        checkpoint_path = os.path.join(args.output_dir, 'model.best.pkl')
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
 
     from collections import OrderedDict
@@ -218,7 +221,7 @@ if __name__ == "__main__":
     algorithm.eval()
     if args.algorithm == 'MCDropout':
         algorithm.train()
-        final_results = {split: eval_helper.test_mcdropout(algorithm, loader, _train_loader, device)
+        final_results = {split: eval_helper.test_mcdropout(algorithm, loader, _train_loader, device, dropout_iters=args.mc_iters)
                         for split, loader in zip(split_names, final_eval_loaders)}
     elif args.algorithm == 'TTA':
         final_results = {split: eval_helper.test_TTA(algorithm, loader, _train_loader, device)
@@ -254,11 +257,12 @@ if __name__ == "__main__":
     df_index = [str(i) for i in df.index]
     df['groups'] = df_index
 
-    breakpoint()
-    # test_table = wandb.Table(dataframe=df)
-    # wandb.log({"test_table": test_table})
+    my_df = df[['train_n_samples', 'accuracy', 'ECE', 'BCE', 'MSE', 'variance', 'entropy' ]]
+    test_table = wandb.Table(dataframe=df)
+    wandb.log({"test_table": test_table})
 
     df.to_csv(os.path.join(args.output_dir, 'test_results.csv'))
+    my_df.to_csv(os.path.join(args.output_dir, 'my_test_results.csv'))
 
     print("\nTest accuracy (best validation checkpoint):")
     print(f"\tmean:\t[{final_results['te']['overall']['accuracy']:.3f}]\n"

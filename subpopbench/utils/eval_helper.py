@@ -5,7 +5,7 @@ from sklearn.metrics import (accuracy_score, confusion_matrix, roc_auc_score, av
                              balanced_accuracy_score, recall_score, brier_score_loss, log_loss, classification_report)
 import netcal.metrics
 from torch_uncertainty.metrics import Entropy, FPR95, BrierScore, Disagreement, MutualInformation, VariationRatio
-
+from scipy.stats import entropy
 import ttach as tta # test time augmentation package
 
 
@@ -105,43 +105,74 @@ def TTA_eval(algorithm, loader, device):
     return np.concatenate(ps, axis=0)
 
 
-def test_TTA(algorithm, loader, train_loader, device):
+def test_TTA(algorithm, loader, train_loader, device, thres=0.5):
 
     # Get train samples
     train_targets, train_attributes, train_gs = get_samples(train_loader)
 
-    output_list = []
-    
-    '''
-    functional.horizontal_flip
+    transforms = [tta.Compose([tta.HorizontalFlip()])] # Unit test
+    # transforms = [tta.Compose([tta.HorizontalFlip()]), tta.Compose([tta.VerticalFlip()]), tta.Compose([tta.Rotate90(angles=[0, 180])]), tta.Compose([tta.Scale(scales=[2, 4])]), tta.Compose([tta.Multiply(factors=[0.9, 1.1])])]
 
-    functional.vertical_flip
+    # transforms = tta.Compose(
+    #     [
+    #         tta.HorizontalFlip(),
+    #         tta.Rotate90(angles=[0, 180]),
+    #         tta.Multiply(factors=[0.9, 1, 1.1]),        
+    #     ]
+    # )
+
+    # loop over the dataset
+    num_labels = loader.dataset.num_labels
+
+    ys, atts, gs, ps = [], [], [], []
+    means, variances, entropies = [], [], []
+
+    algorithm.eval()
+    with torch.no_grad():
+        for _, x, y, a in loader:
+
+            # augment images
+            aug_images = []
+            aug_images.append(x)
+            for transformer in transforms: 
+                for t in transformer:
+                    aug_images.append(t.augment_image(x))
+
+            outputs = []
+            for aug_image in aug_images:
+                p = algorithm.predict(aug_image.to(device))
+                if p.squeeze().ndim == 1:
+                    p = torch.sigmoid(p).detach().cpu().numpy()
+                else:
+                    p = torch.softmax(p, dim=-1).detach().cpu().numpy()
+                    if num_labels == 2:
+                        p = p[:, 1]
+                outputs.append(p)
+
+            # Calculate uncertainty
+            ent = entropy(np.asarray(outputs), base=2).tolist() # Entropy
+            outputs = [torch.from_numpy(x).unsqueeze(-1).unsqueeze(-1) for x in outputs]
+            outputs = torch.cat(outputs,-1)
+            outputs = outputs.reshape(outputs.shape[-1], outputs.shape[0], outputs.shape[1]) # dim: (augmentations iters, total samples, output dim)
+            output_mean = outputs.mean(dim=0) # Confidence
+            output_variance = outputs.var(dim=0) # Uncertainty
 
 
-    '''
+            entropies.append(ent)
+            variances.append(output_variance)
+            means.append(output_mean)
+            ps.append(output_mean.squeeze().numpy())
+            ys.append(y)
+            atts.append(a)
+            gs.append([f'y={yi},a={gi}' for c, (yi, gi) in enumerate(zip(y, a))])
 
-    breakpoint()
-    transforms = tta.Compose(
-        [
-            tta.HorizontalFlip(),
-            tta.Rotate90(angles=[0, 180]),
-            tta.Multiply(factors=[0.9, 1, 1.1]),        
-        ]
-    )
-
-    for i in range(dropout_iters):
-        targets, attributes, preds, gs = predict_on_set(algorithm, loader, device) # gs: group sensitive attribute: (target, attribute) pairing?
-        output_list.append(torch.from_numpy(preds))
-
-    # Calculate model batch statistics
-    output_list = [x.unsqueeze(-1).unsqueeze(-1) for x in output_list]
-    output_list = torch.cat(output_list,-1)
-    output_list = output_list.reshape(output_list.shape[-1], output_list.shape[0], output_list.shape[1]) # dim: (Dropout iters, total samples, output dim)
-    output_mean = output_list.mean(dim=0) # Confidence
-    output_variance = output_list.var(dim=0).mean().item() # Uncertainty
-
-    # Calculate averaged mc dropout output
-    preds = output_list.mean(dim=0).squeeze().numpy()
+    variances = np.concatenate(variances, axis=0)
+    means = np.concatenate(means, axis=0)
+    entropies = np.concatenate(entropies, axis=0)
+    targets = np.concatenate(ys, axis=0)
+    attributes = np.concatenate(atts, axis=0) 
+    preds = np.concatenate(ps, axis=0) 
+    gs = np.concatenate(gs)
     preds_rounded = preds >= thres if preds.squeeze().ndim == 1 else preds.argmax(1)
     label_set = np.unique(targets)
 
@@ -202,36 +233,38 @@ def test_TTA(algorithm, loader, train_loader, device):
 
 
     # Uncertainty metrics
-
+    
     ## Overall uncertainty
-    res['overall']['mean'] = output_list.mean().item()
-    res['overall']['variance'] = output_list.var(dim=0).mean().item()
+    res['overall']['mean'] = means.mean().item()
+    res['overall']['variance'] = variances.mean().item()
+    res['overall']['entropy'] = entropies.mean().item()
+
 
     ## Per attribute uncertainty
     for a in np.unique(attributes):
         mask = attributes == a
-        output_sublist = output_list[:, mask, :]
-        res['per_attribute'][str(a)]['mean'] = output_sublist.mean().item()
-        res['per_attribute'][str(a)]['variance'] = output_sublist.var(dim=0).mean().item()
+        res['per_attribute'][str(a)]['mean'] = means[mask].mean().item()
+        res['per_attribute'][str(a)]['variance'] = variances[mask].mean().item()
+        res['per_attribute'][str(a)]['entropy'] = entropies[mask].mean().item()
 
     # Per subgroup uncertainty
     for g in np.unique(gs):
         mask = gs == g
-        output_sublist = output_list[:, mask, :]
-        res['per_group'][str(g)]['mean'] = output_sublist.mean().item() 
-        res['per_group'][str(g)]['variance'] = output_sublist.var(dim=0).mean().item()
+        res['per_group'][str(g)]['mean'] = means[mask].mean().item()
+        res['per_group'][str(g)]['variance'] = variances[mask].mean().item()
+        res['per_group'][str(g)]['entropy'] = entropies[mask].mean().item()
 
-    # Per class uncertainty TODO
+    # Per class uncertainty 
     for c in np.unique(targets):
         mask = targets == c
-        output_sublist = output_list[:, mask, :]
-        res['per_class'][f'class_{str(c)}']['mean'] = output_sublist.mean().item()
-        res['per_class'][f'class_{str(c)}']['variance'] = output_sublist.var(dim=0).mean().item()
+        res['per_class'][f'class_{str(c)}']['mean'] = means[mask].mean().item()
+        res['per_class'][f'class_{str(c)}']['variance'] = variances[mask].mean().item()
+        res['per_class'][f'class_{str(c)}']['entropy'] = entropies[mask].mean().item()
 
     return res
 
 
-def test_mcdropout(algorithm, loader, train_loader, device, thres=0.5, dropout_iters=5):
+def test_mcdropout(algorithm, loader, train_loader, device, thres=0.5, dropout_iters=2):
 
     # Get train samples
     train_targets, train_attributes, train_gs = get_samples(train_loader)
@@ -244,15 +277,17 @@ def test_mcdropout(algorithm, loader, train_loader, device, thres=0.5, dropout_i
         targets, attributes, preds, gs = predict_on_set(algorithm, loader, device) # gs: group sensitive attribute: (target, attribute) pairing?
         output_list.append(torch.from_numpy(preds))
 
-    # Calculate model batch statistics
+    # Calculate uncertainty
+    outputs = [x.numpy() for x in output_list]
+    entropies = entropy(np.asarray(outputs), base=2) # Entropy Uncertainty
     output_list = [x.unsqueeze(-1).unsqueeze(-1) for x in output_list]
     output_list = torch.cat(output_list,-1)
     output_list = output_list.reshape(output_list.shape[-1], output_list.shape[0], output_list.shape[1]) # dim: (Dropout iters, total samples, output dim)
-    output_mean = output_list.mean(dim=0) # Confidence
-    output_variance = output_list.var(dim=0).mean().item() # Uncertainty
+    means = output_list.mean(dim=0) # Confidence
+    variances = output_list.var(dim=0) # Variance Uncertainty
 
     # Calculate averaged mc dropout output
-    preds = output_list.mean(dim=0).squeeze().numpy()
+    preds = means.squeeze().numpy()
     preds_rounded = preds >= thres if preds.squeeze().ndim == 1 else preds.argmax(1)
     label_set = np.unique(targets)
 
@@ -314,31 +349,35 @@ def test_mcdropout(algorithm, loader, train_loader, device, thres=0.5, dropout_i
 
 
     # Uncertainty metrics
-
+    
     ## Overall uncertainty
-    res['overall']['mean'] = output_list.mean().item()
-    res['overall']['variance'] = output_list.var(dim=0).mean().item()
+    res['overall']['mean'] = means.mean().item()
+    res['overall']['variance'] = variances.mean().item()
+    res['overall']['entropy'] = entropies.mean().item()
 
     ## Per attribute uncertainty
     for a in np.unique(attributes):
         mask = attributes == a
         output_sublist = output_list[:, mask, :]
-        res['per_attribute'][str(a)]['mean'] = output_sublist.mean().item()
-        res['per_attribute'][str(a)]['variance'] = output_sublist.var(dim=0).mean().item()
+        res['per_attribute'][str(a)]['mean'] = means[mask].mean().item()
+        res['per_attribute'][str(a)]['variance'] = variances[mask].mean().item()
+        res['per_attribute'][str(a)]['entropy'] = entropies[mask].mean().item()
 
     # Per subgroup uncertainty
     for g in np.unique(gs):
         mask = gs == g
         output_sublist = output_list[:, mask, :]
-        res['per_group'][str(g)]['mean'] = output_sublist.mean().item() 
-        res['per_group'][str(g)]['variance'] = output_sublist.var(dim=0).mean().item()
+        res['per_group'][str(g)]['mean'] = means[mask].mean().item()
+        res['per_group'][str(g)]['variance'] = variances[mask].mean().item()
+        res['per_group'][str(g)]['entropy'] = entropies[mask].mean().item()
 
     # Per class uncertainty
     for c in np.unique(targets):
         mask = targets == c
         output_sublist = output_list[:, mask, :]
-        res['per_class'][f'class_{str(c)}']['mean'] = output_sublist.mean().item()
-        res['per_class'][f'class_{str(c)}']['variance'] = output_sublist.var(dim=0).mean().item()
+        res['per_class'][f'class_{str(c)}']['mean'] = means[mask].mean().item()
+        res['per_class'][f'class_{str(c)}']['variance'] = variances[mask].mean().item()
+        res['per_class'][f'class_{str(c)}']['entropy'] = entropies[mask].mean().item()
 
     return res
 
@@ -508,7 +547,6 @@ def binary_metrics(targets, preds, label_set=[0, 1], return_arrays=False):
 
 def attribute_metrics(targets, preds, label_set, return_arrays=False):
     
-    # breakpoint()
     if len(targets) == 0:
         return {}
 
@@ -530,8 +568,6 @@ def attribute_metrics(targets, preds, label_set, return_arrays=False):
 
 
 def prob_metrics(targets, preds, label_set, return_arrays=False):
-    
-    # breakpoint()
     
     if len(targets) == 0:
         return {}
