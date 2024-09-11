@@ -16,7 +16,7 @@ CUDA_VISIBLE_DEVICES=1 python -m subpopbench.train --steps 1 --algorithm ERM --d
 
 python -m subpopbench.eval --algorithm ERM --dataset CheXpertNoFinding --train_attr yes --data_dir /home/as26840@ens.ad.etsmtl.ca/data/subpopbench --output_dir /home/as26840@ens.ad.etsmtl.ca/repos/fair_uncertainty/logs --output_folder_name chexpert_preR50_seed0
 
-python -m subpopbench.eval --algorithm MCDropout --dataset CheXpertNoFinding --mc_iters 20 --train_attr yes --data_dir /home/as26840@ens.ad.etsmtl.ca/data/subpopbench --output_dir /home/as26840@ens.ad.etsmtl.ca/repos/fair_uncertainty/logs --output_folder_name CheXpertNoFinding_MCDropout20_seed0
+python -m subpopbench.eval --algorithm MCDropout --dataset CheXpertNoFinding --mc_iters 20 --train_attr yes --data_dir /home/as26840@ens.ad.etsmtl.ca/data/subpopbench --output_dir /home/as26840@ens.ad.etsmtl.ca/repos/fair_uncertainty/logs --output_folder_name CheXpertNoFinding_MCDropout_seed0
 
 
 # TTA

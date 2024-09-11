@@ -261,8 +261,12 @@ if __name__ == "__main__":
     test_table = wandb.Table(dataframe=df)
     wandb.log({"test_table": test_table})
 
-    df.to_csv(os.path.join(args.output_dir, 'test_results.csv'))
-    my_df.to_csv(os.path.join(args.output_dir, 'my_test_results.csv'))
+    if args.algorithm == 'MCdropout':
+        df.to_csv(os.path.join(args.output_dir, f'mc{args.mc_iters}_test_results.csv'))
+        my_df.to_csv(os.path.join(args.output_dir, f'mc{args.mc_iters}_mytest_results.csv'))
+    else:
+        df.to_csv(os.path.join(args.output_dir, 'test_results.csv'))
+        my_df.to_csv(os.path.join(args.output_dir, 'my_test_results.csv'))
 
     print("\nTest accuracy (best validation checkpoint):")
     print(f"\tmean:\t[{final_results['te']['overall']['accuracy']:.3f}]\n"
